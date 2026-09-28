@@ -1,0 +1,63 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "fast-share",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Static Assets from React build (dist/)
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS"
+  },
+
+  // Environment variables (optional: custom base domain)
+  "vars": {
+    "BASE_DOMAIN": "yourdomain.com"
+  },
+
+  // Custom domain routing in your Cloudflare DNS zone
+  // Replace 'yourdomain.com' with your actual domain
+  "routes": [
+    { "pattern": "share.yourdomain.com", "custom_domain": true },
+    { "pattern": "admin.share.yourdomain.com", "custom_domain": true },
+    { "pattern": "link.yourdomain.com", "custom_domain": true },
+    { "pattern": "temporal.yourdomain.com", "custom_domain": true },
+    { "pattern": "permanent.yourdomain.com", "custom_domain": true }
+  ],
+
+  // Cloudflare D1 SQL Database
+  // Run 'wrangler d1 create fast-share-db' to generate your database_id
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "fast-share-db",
+      "database_id": "your-d1-database-id"
+    }
+  ],
+
+  // Cloudflare R2 Storage Bucket
+  // Run 'wrangler r2 bucket create fast-share-storage'
+  "r2_buckets": [
+    {
+      "binding": "STORAGE",
+      "bucket_name": "fast-share-storage"
+    }
+  ],
+
+  // Durable Objects with SQLite backend (WebSocket Hibernation API)
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ROOM_DO",
+        "class_name": "RoomDurableObject"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["RoomDurableObject"]
+    }
+  ]
+}
