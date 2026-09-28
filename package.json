@@ -7,7 +7,7 @@
     "dev:web": "vite",
     "build:web": "vite build",
     "build": "vite build && tsc --noEmit",
-    "dev": "vite build && wrangler dev",
+    "dev": "vite build && pnpm run d1:migrate:local && wrangler dev",
     "deploy": "pnpm run build && wrangler deploy",
     "infra:init": "./scripts/setup.sh",
     "d1:migrate:local": "echo y | wrangler d1 migrations apply fast-share-db --local",
