@@ -1,0 +1,21 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="boltGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fde047" />
+      <stop offset="100%" stop-color="#f59e0b" />
+    </linearGradient>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#18181b" />
+      <stop offset="100%" stop-color="#09090b" />
+    </linearGradient>
+  </defs>
+
+  <!-- Dark Background Squircle -->
+  <rect x="16" y="16" width="480" height="480" rx="120" fill="url(#bgGrad)" stroke="#27272a" stroke-width="12" />
+
+  <!-- Inner Circle with subtle rim -->
+  <circle cx="256" cy="256" r="160" fill="#18181b" stroke="#3f3f46" stroke-width="4" />
+
+  <!-- Luminous Amber Lightning Bolt -->
+  <path d="M 280 110 L 160 260 L 250 260 L 210 402 L 360 252 L 270 252 Z" fill="url(#boltGrad)" stroke="#d97706" stroke-width="8" stroke-linejoin="round" />
+</svg>
