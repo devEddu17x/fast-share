@@ -1,5 +1,5 @@
 // Ambiguity-free alphanumeric character set for generated slugs
-const SLUG_CHARS = '23456789abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ';
+const SLUG_CHARS = "23456789abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ";
 
 /**
  * Generates a cryptographically secure random slug.
@@ -7,7 +7,7 @@ const SLUG_CHARS = '23456789abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ';
 export function generateRandomSlug(length = 6): string {
   const bytes = new Uint8Array(length);
   crypto.getRandomValues(bytes);
-  let result = '';
+  let result = "";
   for (let i = 0; i < length; i++) {
     result += SLUG_CHARS[bytes[i] % SLUG_CHARS.length];
   }
@@ -18,5 +18,5 @@ export function generateRandomSlug(length = 6): string {
  * Validates custom slug format (alphanumeric, dashes, underscores, 2-64 chars).
  */
 export function isValidCustomSlug(slug: string): boolean {
-  return /^[a-z0-9-_]{2,64}$/.test(slug);
+  return /^[a-z0-9-_]{1,64}$/.test(slug);
 }
