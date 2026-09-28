@@ -82,16 +82,45 @@ export default {
 
     // 4. Fallback to React static assets (dist/) with SPA routing fallback
     if (env.ASSETS) {
-      const assetRes = await env.ASSETS.fetch(request);
+      let assetRes = await env.ASSETS.fetch(request);
       if (
         assetRes.status === 404 &&
         request.method === "GET" &&
         !url.pathname.includes(".")
       ) {
-        return env.ASSETS.fetch(
+        assetRes = await env.ASSETS.fetch(
           new Request(new URL("/", request.url), request),
         );
       }
+
+      // If serving HTML, rewrite relative OG/Twitter image tags to absolute URLs for Meta & WhatsApp scrapers
+      const contentType = assetRes.headers.get("content-type") || "";
+      if (contentType.includes("text/html")) {
+        const origin = `${url.protocol}//${url.host}`;
+        return new HTMLRewriter()
+          .on('meta[property^="og:"], meta[name^="twitter:"]', {
+            element(element) {
+              const prop =
+                element.getAttribute("property") ||
+                element.getAttribute("name");
+              if (
+                prop === "og:image" ||
+                prop === "og:image:secure_url" ||
+                prop === "twitter:image"
+              ) {
+                const content = element.getAttribute("content");
+                if (content && content.startsWith("/")) {
+                  element.setAttribute("content", `${origin}${content}`);
+                }
+              }
+              if (prop === "og:url" || prop === "twitter:url") {
+                element.setAttribute("content", origin);
+              }
+            },
+          })
+          .transform(assetRes);
+      }
+
       return assetRes;
     }
 
