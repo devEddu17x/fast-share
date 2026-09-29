@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { getDeviceId } from '../utils/device';
 
 interface MessageComposerProps {
   onSent?: () => void;
@@ -26,6 +27,8 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({ onSent }) => {
   const [format, setFormat] = useState<'text' | 'code'>('text');
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+
+  const currentLimit = format === 'code' ? 65536 : 8192;
 
   // VS Code-style find & replace
   const [showFind, setShowFind] = useState(false);
@@ -128,15 +131,29 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({ onSent }) => {
     const trimmed = content.trim();
     if (!trimmed) return;
 
+    const MAX_LENGTH = format === 'code' ? 65536 : 8192;
+    if (trimmed.length > MAX_LENGTH) {
+      toast.error(
+        format === 'code'
+          ? 'Code snippet exceeds 64 KB limit. Please upload it as a file instead.'
+          : 'Plain text exceeds 8 KB limit. Switch to Code mode or upload it as a file.'
+      );
+      return;
+    }
+
     try {
       const res = await fetch('/api/messages', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': getDeviceId(),
+        },
         body: JSON.stringify({ content: trimmed, format }),
       });
 
       if (!res.ok) {
-        toast.error('Failed to send message');
+        const errData = (await res.json().catch(() => null)) as { error?: string } | null;
+        toast.error(errData?.error || 'Failed to send message');
         return;
       }
 
@@ -231,19 +248,23 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({ onSent }) => {
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch('/api/files', {
+      const res = await fetch('/api/files/upload', {
         method: 'POST',
+        headers: {
+          'x-device-id': getDeviceId(),
+        },
         body: formData,
       });
 
       if (!res.ok) {
-        throw new Error('Upload error');
+        const errData = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(errData?.error || 'Upload error');
       }
 
       toast.success(`${file.name} uploaded and shared`, { id: toastId });
       if (onSent) onSent();
-    } catch {
-      toast.error('Failed to upload file', { id: toastId });
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to upload file', { id: toastId });
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -361,9 +382,31 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({ onSent }) => {
             </button>
           </div>
 
-          <span className="text-xs text-neutral-400 font-mono hidden sm:inline truncate text-right">
-            {format === 'code' ? 'Ctrl+F find • Tab indent' : 'Drag & drop supported'}
-          </span>
+          <div className="flex items-center gap-2 text-xs font-mono text-neutral-400">
+            <span>
+              {content.length > 0 ? (
+                <span
+                  className={
+                    content.length > currentLimit * 0.9
+                      ? 'text-amber-400 font-semibold'
+                      : 'text-neutral-400'
+                  }
+                >
+                  {format === 'code'
+                    ? `${(content.length / 1024).toFixed(1)} / 64 KB`
+                    : `${content.length.toLocaleString()} / 8,192 chars`}
+                </span>
+              ) : (
+                <span className="text-neutral-500">
+                  {format === 'code' ? 'Max 64 KB' : 'Max 8 KB'}
+                </span>
+              )}
+            </span>
+            <span className="hidden sm:inline text-neutral-600">•</span>
+            <span className="hidden sm:inline text-neutral-400">
+              {format === 'code' ? 'Ctrl+F find • Tab indent' : 'Drag & drop files'}
+            </span>
+          </div>
         </div>
 
         {/* Full-Height Native Workspace Container */}
@@ -486,7 +529,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({ onSent }) => {
             <div className="flex h-full flex-1 min-h-0 relative">
               {/* Line numbers column */}
               <div className="w-12 bg-neutral-900/40 border-r border-neutral-800/80 p-3 select-none text-right font-mono text-xs sm:text-sm text-neutral-500 leading-relaxed overflow-hidden shrink-0">
-                {Array.from({ length: lineCount }).map((_, i) => (
+                {Array.from({ length: Math.min(lineCount, 1000) }).map((_, i) => (
                   <div key={i}>{i + 1}</div>
                 ))}
               </div>
@@ -509,7 +552,8 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({ onSent }) => {
                   onChange={(e) => setContent(e.target.value)}
                   onKeyDown={handleKeyDown}
                   onScroll={handleScroll}
-                  placeholder="// Paste or write code snippet here..."
+                  maxLength={65536}
+                  placeholder="// Paste or write code snippet here (max 64 KB)..."
                   className="absolute inset-0 w-full h-full p-3 bg-transparent font-mono text-sm text-neutral-100 placeholder:text-neutral-600 focus:outline-none resize-none leading-relaxed overflow-y-auto whitespace-pre z-10 caret-amber-400 selection:bg-amber-500/30 selection:text-amber-100"
                   spellCheck={false}
                 />
@@ -521,7 +565,8 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({ onSent }) => {
               value={content}
               onChange={(e) => setContent(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type a message or note to share... (or drop files here)"
+              maxLength={8192}
+              placeholder="Type a message or note to share (max 8 KB)... (or drop files here for larger content)"
               className="w-full h-full p-4 bg-transparent text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none resize-none leading-relaxed overflow-y-auto"
             />
           )}

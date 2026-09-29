@@ -254,9 +254,25 @@ export const MessageFeed: React.FC<MessageFeedProps> = ({ messages, connected })
               (fileData.mime_type?.startsWith('image/') ||
                 /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(fileData.name));
 
-            // Line count for code snippets
+            // Line count for code snippets and text notes
             const lines = isCode ? msg.content.split('\n') : [];
-            const isLongContent = (isCode && lines.length > 8) || (!isCode && msg.content.length > 320);
+            const textLines = !isCode && !isFile && !isUrl ? msg.content.split('\n') : [];
+            const isLongContent =
+              (isCode && lines.length > 10) ||
+              (!isCode && !isFile && !isUrl && (textLines.length > 5 || msg.content.length > 320));
+
+            const displayLines = isCode
+              ? (isExpanded ? lines.slice(0, 1000) : lines.slice(0, 10))
+              : [];
+
+            const displayText =
+              !isCode && !isFile && !isUrl
+                ? !isExpanded && isLongContent
+                  ? textLines.length > 5
+                    ? textLines.slice(0, 5).join('\n')
+                    : msg.content.slice(0, 320)
+                  : msg.content
+                : msg.content;
 
             // Distinct semantic border and accent styles
             const cardStyle = isFile
@@ -479,7 +495,7 @@ export const MessageFeed: React.FC<MessageFeedProps> = ({ messages, connected })
                       >
                         <table className="w-full border-collapse">
                           <tbody>
-                            {lines.map((line, idx) => (
+                            {displayLines.map((line, idx) => (
                               <tr key={idx} className="hover:bg-neutral-900/60">
                                 <td className="w-9 pr-4 text-right text-neutral-600 select-none text-xs align-top font-mono">
                                   {idx + 1}
@@ -502,7 +518,9 @@ export const MessageFeed: React.FC<MessageFeedProps> = ({ messages, connected })
                           {isExpanded ? (
                             <>
                               <ChevronUp className="w-3.5 h-3.5" />
-                              <span>Show less ({lines.length} lines)</span>
+                              <span>
+                                Show less ({lines.length > 1000 ? `showing 1,000 of ${lines.length}` : `${lines.length} lines`})
+                              </span>
                             </>
                           ) : (
                             <>
@@ -520,7 +538,7 @@ export const MessageFeed: React.FC<MessageFeedProps> = ({ messages, connected })
                           !isExpanded && isLongContent ? 'line-clamp-5' : ''
                         }`}
                       >
-                        {msg.content}
+                        {displayText}
                       </p>
                       {isLongContent && (
                         <button
