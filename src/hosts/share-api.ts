@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type { Env } from "../types";
 import {
   createShortLink,
@@ -13,9 +13,24 @@ import { resolveContentType } from "../core/storage/mime";
 import { broadcastToRoom } from "../core/broadcast";
 import { sendTelegramMessage } from "../core/telegram/client";
 import { escapeHtml, formatBytes } from "../core/telegram/format";
-import { buildServiceUrl } from "../core/utils/url";
+import {
+  buildServiceUrl,
+  getBaseDomain,
+  isValidHttpUrl,
+} from "../core/utils/url";
+import { isValidCustomSlug } from "../core/utils/slug";
+import { rateLimiter } from "../core/rate-limit";
 
 export const shareApi = new Hono<{ Bindings: Env }>();
+
+function getClientIdentifiers(c: Context<{ Bindings: Env }>) {
+  const deviceId = c.req.header("x-device-id") || null;
+  const ip =
+    c.req.header("cf-connecting-ip") ||
+    c.req.header("x-forwarded-for")?.split(",")[0].trim() ||
+    "127.0.0.1";
+  return { deviceId, ip };
+}
 
 // -------------------------------------------------------------
 // SHORTENER ROUTES
@@ -42,11 +57,113 @@ shareApi.post("/links", async (c) => {
       expires_in_hours?: number;
     }>();
 
-    if (!body || !body.url) {
+    const { deviceId, ip } = getClientIdentifiers(c);
+    const rateCheck = rateLimiter.check("links", deviceId, ip);
+    if (!rateCheck.allowed) {
+      return c.json({ success: false, error: rateCheck.error }, 429, {
+        "Retry-After": String(rateCheck.retryAfterSeconds),
+      });
+    }
+
+    if (!body || !body.url || typeof body.url !== "string") {
       return c.json(
         { success: false, error: "Destination URL is required" },
         400,
       );
+    }
+
+    const trimmedUrl = body.url.trim();
+
+    // Reject URLs longer than 2048 characters
+    if (trimmedUrl.length > 2048) {
+      return c.json(
+        {
+          success: false,
+          error: "Destination URL exceeds maximum length of 2048 characters",
+        },
+        400,
+      );
+    }
+
+    // Validate URL protocol
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(trimmedUrl);
+    } catch {
+      return c.json(
+        {
+          success: false,
+          error: "Invalid destination URL. Must start with http:// or https://",
+        },
+        400,
+      );
+    }
+
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+      return c.json(
+        {
+          success: false,
+          error: "Only http:// and https:// URLs are allowed",
+        },
+        400,
+      );
+    }
+
+    // Anti-Self-Chaining & Loop Protection
+    const baseDomain = getBaseDomain(c.env, c.req.url);
+    const shortenerHost = `link.${baseDomain}`.toLowerCase();
+    const targetHost = parsedUrl.hostname.toLowerCase();
+
+    const isShortenerHost =
+      targetHost === shortenerHost ||
+      ((baseDomain.includes("localhost") || baseDomain.includes("127.0.0.1")) &&
+        parsedUrl.pathname.startsWith("/r"));
+
+    if (isShortenerHost) {
+      return c.json(
+        {
+          success: false,
+          error:
+            "Self-referencing short links or chaining shorteners is not allowed",
+        },
+        400,
+      );
+    }
+
+    // SSRF / Loopback protection in non-local environments
+    if (
+      !baseDomain.includes("localhost") &&
+      !baseDomain.includes("127.0.0.1")
+    ) {
+      if (
+        targetHost === "localhost" ||
+        targetHost === "127.0.0.1" ||
+        targetHost === "0.0.0.0" ||
+        targetHost.endsWith(".localhost")
+      ) {
+        return c.json(
+          {
+            success: false,
+            error: "Localhost and loopback destinations are not allowed",
+          },
+          400,
+        );
+      }
+    }
+
+    // Validate custom slug if provided
+    if (body.slug) {
+      const cleanSlug = body.slug.trim().toLowerCase();
+      if (!isValidCustomSlug(cleanSlug)) {
+        return c.json(
+          {
+            success: false,
+            error:
+              "Slug must contain only alphanumeric characters, dashes, and underscores (1-64 chars)",
+          },
+          400,
+        );
+      }
     }
 
     let expiresAt: number | null = null;
@@ -55,7 +172,7 @@ shareApi.post("/links", async (c) => {
     }
 
     const result = await createShortLink(c.env.DB, {
-      destination_url: body.url,
+      destination_url: trimmedUrl,
       slug: body.slug,
       expires_at: expiresAt,
     });
@@ -125,6 +242,14 @@ shareApi.get("/messages", async (c) => {
 // Post a new message or code snippet
 shareApi.post("/messages", async (c) => {
   try {
+    const { deviceId, ip } = getClientIdentifiers(c);
+    const rateCheck = rateLimiter.check("messages", deviceId, ip);
+    if (!rateCheck.allowed) {
+      return c.json({ success: false, error: rateCheck.error }, 429, {
+        "Retry-After": String(rateCheck.retryAfterSeconds),
+      });
+    }
+
     const body = await c.req.json<{
       content?: string;
       format?: "text" | "code" | "url";
@@ -134,8 +259,25 @@ shareApi.post("/messages", async (c) => {
       return c.json({ success: false, error: "Content is required" }, 400);
     }
 
+    const trimmedContent = body.content.trim();
+    const format = body.format || "text";
+    const MAX_LENGTH = format === "code" ? 65536 : 8192; // 64 KB code, 8 KB plain text
+
+    if (trimmedContent.length > MAX_LENGTH) {
+      return c.json(
+        {
+          success: false,
+          error:
+            format === "code"
+              ? "Code snippet exceeds maximum length of 64 KB. Please upload as a file instead."
+              : "Plain text note exceeds maximum length of 8 KB (8,192 chars). Switch to Code mode or upload as a file.",
+        },
+        400,
+      );
+    }
+
     const message = await saveRoomMessage(c.env.DB, {
-      content: body.content.trim(),
+      content: trimmedContent,
       format: body.format || "text",
       sender_type: "web",
     });
@@ -196,8 +338,16 @@ shareApi.get("/files", async (c) => {
 });
 
 // Upload a file to R2 (temporal storage by default)
-shareApi.post("/files/upload", async (c) => {
+const handleFileUpload = async (c: Context<{ Bindings: Env }>) => {
   try {
+    const { deviceId, ip } = getClientIdentifiers(c);
+    const rateCheck = rateLimiter.check("files", deviceId, ip);
+    if (!rateCheck.allowed) {
+      return c.json({ success: false, error: rateCheck.error }, 429, {
+        "Retry-After": String(rateCheck.retryAfterSeconds),
+      });
+    }
+
     const formData = await c.req.formData();
     const file = formData.get("file");
 
@@ -309,7 +459,10 @@ shareApi.post("/files/upload", async (c) => {
       500,
     );
   }
-});
+};
+
+shareApi.post("/files/upload", handleFileUpload);
+shareApi.post("/files", handleFileUpload);
 
 // Promote a temporary file to permanent storage
 shareApi.post("/files/promote", async (c) => {
