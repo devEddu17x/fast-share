@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UploadCloud, File as FileIcon, ExternalLink, ShieldAlert, Sparkles, Copy, Check, Clock, Download } from 'lucide-react';
+import { UploadCloud, File as FileIcon, ExternalLink, Sparkles, Copy, Check, Download } from 'lucide-react';
 import { toast } from 'sonner';
 
-interface FileItem {
+export interface FileItem {
   key: string;
   original_name: string;
   mime_type: string;
@@ -22,7 +22,11 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-export const FileDropzone: React.FC = () => {
+interface FileDropzoneProps {
+  onFileUploaded?: () => void;
+}
+
+export const FileDropzone: React.FC<FileDropzoneProps> = ({ onFileUploaded }) => {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [uploading, setUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -40,7 +44,7 @@ export const FileDropzone: React.FC = () => {
         }
       }
     } catch {
-      // Ignore network errors in offline/dev mode
+      // Dev mode ignore
     }
   };
 
@@ -50,7 +54,7 @@ export const FileDropzone: React.FC = () => {
 
   const uploadFile = async (file: File) => {
     if (file.size > 500 * 1024 * 1024) {
-      toast.error('File exceeds maximum size of 500 MB');
+      toast.error('File size exceeds maximum 500 MB limit');
       return;
     }
 
@@ -71,9 +75,10 @@ export const FileDropzone: React.FC = () => {
       } else {
         toast.success(`Uploaded: ${file.name}`);
         fetchFiles();
+        if (onFileUploaded) onFileUploaded();
       }
     } catch {
-      toast.error('Upload failed due to network error');
+      toast.error('Network error uploading file');
     } finally {
       setUploading(false);
     }
@@ -141,31 +146,25 @@ export const FileDropzone: React.FC = () => {
         fetchFiles();
       }
     } catch {
-      toast.error('Network error while promoting file');
+      toast.error('Network error promoting file');
     } finally {
       setPromotingKey(null);
     }
   };
 
   const handleCopy = (url: string, key: string) => {
-    // In local dev, prepend origin to key (e.g. http://localhost:8787/temporal/...)
     const effectiveUrl = window.location.hostname.includes('localhost')
       ? `${window.location.origin}/${key}`
       : url;
 
     navigator.clipboard.writeText(effectiveUrl);
     setCopiedKey(key);
-    toast.success('Link copied to clipboard!');
+    toast.success('Link copied to clipboard');
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
   return (
-    <div className="w-full max-w-2xl mt-8 flex flex-col gap-6 text-left">
-      <div className="flex items-center gap-2 text-neutral-200 font-medium text-sm">
-        <UploadCloud className="w-4 h-4 text-emerald-400" />
-        <span>Quick File Drop (Up to 500 MB)</span>
-      </div>
-
+    <div className="h-full flex flex-col p-5 gap-5 overflow-y-auto">
       {/* Drag & Drop Area */}
       <div
         onDragOver={(e) => {
@@ -175,10 +174,18 @@ export const FileDropzone: React.FC = () => {
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
-        className={`p-8 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center text-center gap-2 ${
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            fileInputRef.current?.click();
+          }
+        }}
+        aria-label="File upload dropzone"
+        className={`p-8 rounded-xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center text-center gap-3 ${
           isDragging
-            ? 'border-emerald-500 bg-emerald-500/10'
-            : 'border-neutral-800 bg-neutral-900/40 hover:border-neutral-700 hover:bg-neutral-900/70'
+            ? 'border-neutral-400 bg-neutral-900/90'
+            : 'border-neutral-800 bg-neutral-950/60 hover:border-neutral-700 hover:bg-neutral-900/40'
         }`}
       >
         <input
@@ -189,32 +196,40 @@ export const FileDropzone: React.FC = () => {
         />
 
         {uploading ? (
-          <div className="flex flex-col items-center gap-2 py-4">
-            <span className="w-8 h-8 border-3 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
-            <span className="text-sm font-medium text-neutral-300">Uploading to R2 storage...</span>
+          <div className="flex flex-col items-center gap-3 py-3">
+            <span className="w-8 h-8 border-2 border-neutral-600 border-t-neutral-100 rounded-full animate-spin" />
+            <span className="text-sm font-medium text-neutral-300">Uploading to R2...</span>
           </div>
         ) : (
           <>
-            <div className="w-12 h-12 rounded-xl bg-neutral-800/80 flex items-center justify-center text-neutral-300 mb-1">
-              <UploadCloud className="w-6 h-6 text-emerald-400" />
+            <div className="w-12 h-12 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-300">
+              <UploadCloud className="w-6 h-6 text-neutral-300" />
             </div>
-            <p className="text-sm font-medium text-neutral-200">
-              Drag & drop files here, click to browse, or paste with <kbd className="px-1.5 py-0.5 rounded bg-neutral-800 text-[11px] font-mono text-neutral-300">Ctrl+V</kbd>
-            </p>
-            <p className="text-xs text-neutral-500">
-              Ephemeral files expire in 24 hours unless promoted to permanent.
-            </p>
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-semibold text-neutral-100">
+                Drag & drop files here, or click to browse
+              </p>
+              <p className="text-xs text-neutral-400">
+                Paste directly with <kbd className="px-1.5 py-0.5 rounded bg-neutral-900 text-neutral-300 font-mono text-xs border border-neutral-800">Ctrl+V</kbd> (Up to 500 MB)
+              </p>
+            </div>
           </>
         )}
       </div>
 
       {/* Files List */}
-      {files.length > 0 && (
-        <div className="flex flex-col gap-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-neutral-400 px-1">
-            Uploaded Files ({files.length})
-          </h2>
-          <div className="flex flex-col gap-2">
+      <div className="flex-1 flex flex-col gap-3 min-h-0">
+        <div className="flex items-center justify-between text-sm text-neutral-300 px-1 border-b border-neutral-800/80 pb-2">
+          <span className="font-semibold text-neutral-200">Uploaded Files</span>
+          <span className="font-mono text-xs text-neutral-400">{files.length} files</span>
+        </div>
+
+        {files.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center text-center text-neutral-400 text-sm py-10">
+            No files in the library yet.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2.5">
             {files.map((file) => {
               const isPermanent = file.storage_type === 'permanent';
               const localViewerUrl = window.location.hostname.includes('localhost')
@@ -224,86 +239,82 @@ export const FileDropzone: React.FC = () => {
               return (
                 <div
                   key={file.key}
-                  className="p-4 rounded-xl bg-neutral-900/60 border border-neutral-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:border-neutral-700 transition-colors"
+                  className="p-4 rounded-xl bg-neutral-900/60 border border-blue-900/30 hover:border-blue-700/50 flex flex-col gap-3 transition-colors"
                 >
-                  <div className="flex items-start gap-3 min-w-0 flex-1">
-                    <div className="w-9 h-9 rounded-lg bg-neutral-800 flex items-center justify-center shrink-0 mt-0.5">
-                      <FileIcon className="w-4 h-4 text-neutral-400" />
-                    </div>
-                    <div className="flex flex-col min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <a
-                          href={localViewerUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-neutral-100 font-medium text-sm hover:text-emerald-400 transition-colors truncate max-w-[240px] sm:max-w-xs flex items-center gap-1"
-                        >
-                          <span>{file.original_name}</span>
-                          <ExternalLink className="w-3.5 h-3.5 opacity-60" />
-                        </a>
-                        <span
-                          className={`text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full ${
-                            isPermanent
-                              ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                              : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                          }`}
-                        >
-                          {isPermanent ? 'Permanent' : 'Ephemeral (24h)'}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <div className="w-9 h-9 rounded-lg bg-blue-950/40 border border-blue-800/40 flex items-center justify-center shrink-0 mt-0.5">
+                        <FileIcon className="w-5 h-5 text-blue-400" />
+                      </div>
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={localViewerUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-blue-400 hover:text-blue-300 font-medium text-sm hover:underline truncate max-w-xs sm:max-w-md flex items-center gap-1"
+                          >
+                            <span>{file.original_name}</span>
+                            <ExternalLink className="w-3.5 h-3.5 text-blue-400/70" />
+                          </a>
+                        </div>
+                        <span className="text-xs font-mono text-neutral-400 mt-0.5">
+                          {formatBytes(file.size_bytes)} • {isPermanent ? 'Permanent' : 'Ephemeral (24h)'}
                         </span>
                       </div>
-                      <span className="text-xs text-neutral-500 mt-1">
-                        {formatBytes(file.size_bytes)} • {file.mime_type}
-                      </span>
                     </div>
-                  </div>
 
-                  <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                    {/* Subtle Make Permanent button when ephemeral */}
                     {!isPermanent && (
                       <button
                         type="button"
                         onClick={() => handlePromote(file.key)}
                         disabled={promotingKey === file.key}
-                        className="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer border border-emerald-500/30"
+                        className="text-xs text-neutral-400 hover:text-neutral-200 border border-neutral-800 hover:border-neutral-700 px-2.5 py-1.5 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
+                        title="Promote to permanent storage"
                       >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>{promotingKey === file.key ? 'Saving...' : 'Make Permanent'}</span>
+                        <Sparkles className="w-3.5 h-3.5 text-neutral-400" />
+                        <span>{promotingKey === file.key ? 'Saving...' : 'Make permanent'}</span>
                       </button>
                     )}
+                  </div>
 
-                    <a
-                      href={`${localViewerUrl}${localViewerUrl.includes('?') ? '&' : '?'}download=true`}
-                      download={file.original_name}
-                      className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
-                      title="Download file directly"
-                    >
-                      <Download className="w-3.5 h-3.5 text-blue-400" />
-                      <span>Download</span>
-                    </a>
-
+                  {/* Primary Actions: Download & Copy Link */}
+                  <div className="flex items-center justify-end gap-2.5 pt-1.5 border-t border-neutral-800/60">
                     <button
                       type="button"
                       onClick={() => handleCopy(file.view_url, file.key)}
-                      className="px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-neutral-200 text-xs font-medium flex items-center gap-1.5 border border-neutral-800 transition-colors cursor-pointer"
                     >
                       {copiedKey === file.key ? (
                         <>
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <Check className="w-4 h-4 text-emerald-400" />
                           <span className="text-emerald-400">Copied</span>
                         </>
                       ) : (
                         <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Copy Link</span>
+                          <Copy className="w-4 h-4" />
+                          <span>Copy link</span>
                         </>
                       )}
                     </button>
+
+                    <a
+                      href={`${localViewerUrl}${localViewerUrl.includes('?') ? '&' : '?'}download=true`}
+                      download={file.original_name}
+                      className="px-3.5 py-1.5 rounded-lg bg-neutral-100 hover:bg-white text-neutral-950 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                      title="Download file"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Download</span>
+                    </a>
                   </div>
                 </div>
               );
             })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
