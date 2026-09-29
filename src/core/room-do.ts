@@ -4,6 +4,7 @@ import { saveRoomMessage } from "./db";
 import { sendTelegramMessage } from "./telegram/client";
 import { escapeHtml } from "./telegram/format";
 import { rateLimiter } from "./rate-limit";
+import { getBaseDomain } from "./utils/url";
 
 export class RoomDurableObject extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
@@ -12,6 +13,33 @@ export class RoomDurableObject extends DurableObject<Env> {
     if (url.pathname === "/ws") {
       if (request.headers.get("Upgrade") !== "websocket") {
         return new Response("Expected WebSocket", { status: 426 });
+      }
+
+      // Origin validation to prevent Cross-Site WebSocket Hijacking (CSWSH)
+      const origin = request.headers.get("Origin");
+      if (origin) {
+        try {
+          const originUrl = new URL(origin);
+          const reqUrl = new URL(request.url);
+          const baseDomain = getBaseDomain(this.env, request.url);
+
+          const isSameHost = originUrl.hostname === reqUrl.hostname;
+          const isAllowedDomain =
+            originUrl.hostname === baseDomain ||
+            originUrl.hostname.endsWith("." + baseDomain) ||
+            originUrl.hostname === "localhost" ||
+            originUrl.hostname === "127.0.0.1";
+
+          if (!isSameHost && !isAllowedDomain) {
+            return new Response("Forbidden: Invalid WebSocket origin", {
+              status: 403,
+            });
+          }
+        } catch {
+          return new Response("Forbidden: Malformed Origin header", {
+            status: 403,
+          });
+        }
       }
 
       const webSocketPair = new WebSocketPair();
