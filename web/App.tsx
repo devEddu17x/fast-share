@@ -71,6 +71,10 @@ export const App: React.FC = () => {
               const next = [...prev, payload.data];
               return next.length > 100 ? next.slice(-100) : next;
             });
+          } else if (payload.type === 'message_deleted' && payload.data?.id) {
+            setMessages((prev) => prev.filter((m) => m.id !== payload.data.id));
+          } else if (payload.type === 'messages_cleared') {
+            setMessages([]);
           } else if (payload.type === 'file_uploaded' && payload.data) {
             toast.info(`New file dropped: ${payload.data.original_name}`);
             fetchMessages();
