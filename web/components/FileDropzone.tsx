@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UploadCloud, File as FileIcon, ExternalLink, Sparkles, Copy, Check, Download } from 'lucide-react';
 import { toast } from 'sonner';
+import { getDeviceId } from '../utils/device';
 
 export interface FileItem {
   key: string;
@@ -65,6 +66,9 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({ onFileUploaded }) =>
     try {
       const res = await fetch('/api/files/upload', {
         method: 'POST',
+        headers: {
+          'x-device-id': getDeviceId(),
+        },
         body: formData,
       });
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link2, Copy, Check, ExternalLink, ArrowRight, MousePointerClick } from 'lucide-react';
 import { toast } from 'sonner';
+import { getDeviceId } from '../utils/device';
 
 export interface ShortLinkItem {
   id: string;
@@ -48,7 +49,10 @@ export const ShortenerForm: React.FC<ShortenerFormProps> = ({ onLinkCreated }) =
     try {
       const res = await fetch('/api/links', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': getDeviceId(),
+        },
         body: JSON.stringify({
           url: url.trim(),
           slug: slug.trim() || undefined,
