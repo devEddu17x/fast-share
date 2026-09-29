@@ -3,6 +3,7 @@ import type { Env } from "../types";
 import { saveRoomMessage } from "./db";
 import { sendTelegramMessage } from "./telegram/client";
 import { escapeHtml } from "./telegram/format";
+import { rateLimiter } from "./rate-limit";
 
 export class RoomDurableObject extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
@@ -15,6 +16,12 @@ export class RoomDurableObject extends DurableObject<Env> {
 
       const webSocketPair = new WebSocketPair();
       const [client, server] = Object.values(webSocketPair);
+
+      const ip =
+        request.headers.get("cf-connecting-ip") ||
+        request.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+        "127.0.0.1";
+      server.serializeAttachment({ ip });
 
       // Accept connection using WebSocket Hibernation API (zero CPU consumption while idle)
       this.ctx.acceptWebSocket(server);
@@ -35,7 +42,7 @@ export class RoomDurableObject extends DurableObject<Env> {
   }
 
   async webSocketMessage(
-    _ws: WebSocket,
+    ws: WebSocket,
     message: string | ArrayBuffer,
   ): Promise<void> {
     try {
@@ -44,6 +51,38 @@ export class RoomDurableObject extends DurableObject<Env> {
         if (payload.type === "send_message" && payload.content?.trim()) {
           const content = payload.content.trim();
           const format = payload.format || "text";
+          const deviceId = payload.device_id || null;
+
+          const attachment = ws.deserializeAttachment() as {
+            ip?: string;
+          } | null;
+          const clientIp = attachment?.ip || "127.0.0.1";
+
+          // Rate limit check
+          const rateCheck = rateLimiter.check("messages", deviceId, clientIp);
+          if (!rateCheck.allowed) {
+            ws.send(
+              JSON.stringify({
+                type: "error",
+                message: rateCheck.error,
+              }),
+            );
+            return;
+          }
+
+          const MAX_LENGTH = format === "code" ? 65536 : 8192; // 64 KB code, 8 KB plain text
+          if (content.length > MAX_LENGTH) {
+            ws.send(
+              JSON.stringify({
+                type: "error",
+                message:
+                  format === "code"
+                    ? "Code snippet exceeds maximum length of 64 KB. Please upload as a file instead."
+                    : "Plain text note exceeds maximum length of 8 KB (8,192 chars). Switch to Code mode or upload as a file.",
+              }),
+            );
+            return;
+          }
           const saved = await saveRoomMessage(this.env.DB, {
             content,
             format,
