@@ -67,6 +67,16 @@ export async function handleTelegramWebhook(
     });
   }
 
+  // Validate Telegram webhook secret token to prevent request spoofing
+  if (env.TELEGRAM_WEBHOOK_SECRET) {
+    const incomingSecret = request.headers.get(
+      "x-telegram-bot-api-secret-token",
+    );
+    if (!incomingSecret || incomingSecret !== env.TELEGRAM_WEBHOOK_SECRET) {
+      return new Response("Unauthorized webhook request", { status: 401 });
+    }
+  }
+
   let update: TelegramUpdate;
   try {
     update = (await request.json()) as TelegramUpdate;

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, KeyRound, Trash2, ExternalLink, BarChart3, Database, RefreshCw, LogOut, Check } from 'lucide-react';
+import { Shield, KeyRound, Trash2, ExternalLink, BarChart3, Database, RefreshCw, LogOut, Check, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
+import { MessageItem } from './MessageFeed';
 
 interface AdminStats {
   total_links: number;
@@ -35,6 +36,7 @@ export const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [links, setLinks] = useState<ShortLinkItem[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
+  const [messages, setMessages] = useState<MessageItem[]>([]);
 
   const fetchAdminData = async (authToken: string) => {
     try {
@@ -67,6 +69,13 @@ export const AdminDashboard: React.FC = () => {
       if (filesRes.ok) {
         const filesData = (await filesRes.json()) as { success: boolean; files: FileItem[] };
         setFiles(filesData.files);
+      }
+
+      // 4. Fetch messages
+      const msgsRes = await fetch('/api/messages');
+      if (msgsRes.ok) {
+        const msgsData = (await msgsRes.json()) as { success: boolean; messages: MessageItem[] };
+        setMessages(msgsData.messages || []);
       }
     } catch {
       toast.error('Failed to load administrative data');
@@ -180,6 +189,49 @@ export const AdminDashboard: React.FC = () => {
       }
     } catch {
       toast.error('Network error during purge');
+    }
+  };
+
+  const handleDeleteMessage = async (id: string) => {
+    if (!token) return;
+    if (!confirm('Are you sure you want to permanently delete this message?')) return;
+
+    try {
+      const res = await fetch(`/api/admin/messages/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        toast.success('Message deleted successfully');
+        setMessages((prev) => prev.filter((m) => m.id !== id));
+      } else {
+        toast.error('Failed to delete message');
+      }
+    } catch {
+      toast.error('Network error while deleting');
+    }
+  };
+
+  const handleClearAllMessages = async () => {
+    if (!token) return;
+    if (!confirm('Are you sure you want to delete ALL messages in the room? This action cannot be undone.')) return;
+
+    try {
+      const res = await fetch('/api/admin/messages', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const data = (await res.json()) as { success: boolean; purged_messages?: number };
+      if (res.ok && data.success) {
+        toast.success(`Cleared all messages! Removed ${data.purged_messages || 0} messages.`);
+        setMessages([]);
+      } else {
+        toast.error('Failed to clear messages');
+      }
+    } catch {
+      toast.error('Network error while clearing messages');
     }
   };
 
@@ -347,6 +399,61 @@ export const AdminDashboard: React.FC = () => {
                   onClick={() => handleDeleteFile(file.key, file.original_name)}
                   className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors cursor-pointer"
                   title="Delete file permanently"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Manage Room Messages Table */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between px-1">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
+            Manage Room Messages ({messages.length})
+          </h2>
+          {messages.length > 0 && (
+            <button
+              type="button"
+              onClick={handleClearAllMessages}
+              className="text-[11px] text-red-400 hover:text-red-300 font-medium cursor-pointer"
+            >
+              Clear All Messages
+            </button>
+          )}
+        </div>
+        <div className="flex flex-col gap-2">
+          {messages.length === 0 ? (
+            <div className="p-4 rounded-xl bg-neutral-900/40 border border-neutral-800 text-xs text-neutral-500 text-center">
+              No messages in room.
+            </div>
+          ) : (
+            messages.map((msg) => (
+              <div
+                key={msg.id}
+                className="p-3 rounded-xl bg-neutral-900/60 border border-neutral-800 flex items-center justify-between gap-3 text-xs"
+              >
+                <div className="flex flex-col min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">
+                      {msg.format || 'text'}
+                    </span>
+                    <span className="text-[10px] text-neutral-500 font-medium">
+                      via {msg.sender_type || 'web'} • {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <span className="text-neutral-300 truncate mt-1 font-mono text-[11px]">
+                    {msg.content}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleDeleteMessage(msg.id)}
+                  className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors cursor-pointer shrink-0"
+                  title="Delete message permanently"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>

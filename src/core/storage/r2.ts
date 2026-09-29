@@ -41,7 +41,12 @@ export async function streamR2Object(
     const hubUrl = buildServiceUrl("share", "", env);
     return new Response(renderFileNotFoundHtml(key, hubUrl), {
       status: 404,
-      headers: { "Content-Type": "text/html; charset=utf-8" },
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Security-Policy":
+          "default-src 'none'; style-src 'unsafe-inline';",
+        "X-Content-Type-Options": "nosniff",
+      },
     });
   }
 
@@ -55,7 +60,29 @@ export async function streamR2Object(
   object.writeHttpMetadata(headers);
   headers.set("Content-Type", contentType);
 
-  const dispositionType = isDownload ? "attachment" : "inline";
+  // Security headers to prevent MIME sniffing and Stored XSS attacks
+  headers.set("X-Content-Type-Options", "nosniff");
+
+  const isExecutableMarkup =
+    contentType.includes("text/html") ||
+    contentType.includes("application/xhtml+xml") ||
+    contentType.includes("image/svg+xml");
+
+  if (isExecutableMarkup) {
+    // Sandbox restricts script execution, popups, and origin access
+    headers.set(
+      "Content-Security-Policy",
+      "sandbox; default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline';",
+    );
+  }
+
+  // Force download for HTML/XHTML to prevent phishing/script execution in browser origin
+  const shouldForceDownload =
+    isDownload ||
+    contentType.includes("text/html") ||
+    contentType.includes("application/xhtml+xml");
+
+  const dispositionType = shouldForceDownload ? "attachment" : "inline";
   headers.set(
     "Content-Disposition",
     `${dispositionType}; filename="${encodeURIComponent(filename)}"`,
@@ -152,7 +179,17 @@ export async function promoteFile(
   };
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function renderFileNotFoundHtml(key: string, hubUrl: string): string {
+  const safeHubUrl = escapeHtml(hubUrl);
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -172,7 +209,7 @@ function renderFileNotFoundHtml(key: string, hubUrl: string): string {
   <div class="box">
     <h1>404 • Archivo no encontrado</h1>
     <p>El archivo solicitado ha expirado o no existe en el almacenamiento.</p>
-    <a href="${hubUrl}">Ir a Fast Share</a>
+    <a href="${safeHubUrl}">Ir a Fast Share</a>
   </div>
 </body>
 </html>`;

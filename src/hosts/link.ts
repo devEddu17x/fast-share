@@ -30,7 +30,12 @@ export async function handleLinkRedirect(
     const hubUrl = buildServiceUrl("share", "", env, request.url);
     return new Response(renderNotFoundHtml(slug, hubUrl), {
       status: 404,
-      headers: { "Content-Type": "text/html; charset=utf-8" },
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Security-Policy":
+          "default-src 'none'; style-src 'unsafe-inline';",
+        "X-Content-Type-Options": "nosniff",
+      },
     });
   }
 
@@ -39,7 +44,12 @@ export async function handleLinkRedirect(
     const hubUrl = buildServiceUrl("share", "", env, request.url);
     return new Response(renderExpiredHtml(slug, hubUrl), {
       status: 410,
-      headers: { "Content-Type": "text/html; charset=utf-8" },
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Security-Policy":
+          "default-src 'none'; style-src 'unsafe-inline';",
+        "X-Content-Type-Options": "nosniff",
+      },
     });
   }
 
@@ -50,7 +60,18 @@ export async function handleLinkRedirect(
   return Response.redirect(link.destination_url, 302);
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function renderNotFoundHtml(slug: string, hubUrl: string): string {
+  const safeSlug = escapeHtml(slug);
+  const safeHubUrl = escapeHtml(hubUrl);
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -70,14 +91,16 @@ function renderNotFoundHtml(slug: string, hubUrl: string): string {
 <body>
   <div class="box">
     <h1>404 • Enlace no encontrado</h1>
-    <p>El enlace corto <code>/${slug}</code> no existe o fue eliminado.</p>
-    <a href="${hubUrl}">Ir a Fast Share</a>
+    <p>El enlace corto <code>/${safeSlug}</code> no existe o fue eliminado.</p>
+    <a href="${safeHubUrl}">Ir a Fast Share</a>
   </div>
 </body>
 </html>`;
 }
 
 function renderExpiredHtml(slug: string, hubUrl: string): string {
+  const safeSlug = escapeHtml(slug);
+  const safeHubUrl = escapeHtml(hubUrl);
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -96,8 +119,8 @@ function renderExpiredHtml(slug: string, hubUrl: string): string {
 <body>
   <div class="box">
     <h1>410 • Enlace expirado</h1>
-    <p>El enlace corto <code>/${slug}</code> ha cumplido su ciclo de vida y ya no está disponible.</p>
-    <a href="${hubUrl}">Ir a Fast Share</a>
+    <p>El enlace corto <code>/${safeSlug}</code> ha cumplido su ciclo de vida y ya no está disponible.</p>
+    <a href="${safeHubUrl}">Ir a Fast Share</a>
   </div>
 </body>
 </html>`;
