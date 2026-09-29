@@ -33,7 +33,7 @@ export const App: React.FC = () => {
       if (res.ok) {
         const data = (await res.json()) as { success: boolean; messages: MessageItem[] };
         if (data.success && Array.isArray(data.messages)) {
-          setMessages(data.messages);
+          setMessages(data.messages.slice(-100));
         }
       }
     } catch {
@@ -68,11 +68,14 @@ export const App: React.FC = () => {
           if (payload.type === 'new_message' && payload.data) {
             setMessages((prev) => {
               if (prev.some((m) => m.id === payload.data.id)) return prev;
-              return [...prev, payload.data];
+              const next = [...prev, payload.data];
+              return next.length > 100 ? next.slice(-100) : next;
             });
           } else if (payload.type === 'file_uploaded' && payload.data) {
             toast.info(`New file dropped: ${payload.data.original_name}`);
             fetchMessages();
+          } else if (payload.type === 'error' && payload.message) {
+            toast.error(payload.message);
           }
         } catch {
           // Ignore parse errors
