@@ -48,10 +48,12 @@ export async function listRoomMessages(
 
   const { results } = await db
     .prepare(
-      `SELECT * FROM room_messages 
-       WHERE created_at >= ? 
-       ORDER BY created_at ASC 
-       LIMIT ?`,
+      `SELECT * FROM (
+         SELECT * FROM room_messages 
+         WHERE created_at >= ? 
+         ORDER BY created_at DESC 
+         LIMIT ?
+       ) ORDER BY created_at ASC`,
     )
     .bind(cutoff, limit)
     .all<RoomMessage>();
