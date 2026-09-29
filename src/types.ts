@@ -9,6 +9,7 @@ export interface Env {
   BASE_DOMAIN?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_ADMIN_ID?: string;
+  TELEGRAM_WEBHOOK_SECRET?: string;
   ADMIN_PASSWORD?: string;
 }
 
