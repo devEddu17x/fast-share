@@ -15,7 +15,7 @@ interface RateLimitRecord {
   timestamps: number[];
 }
 
-export type RateCategory = "messages" | "files" | "links";
+export type RateCategory = "messages" | "files" | "links" | "admin_login";
 
 const DEFAULT_CONFIGS: Record<RateCategory, RateLimitConfig> = {
   messages: {
@@ -32,6 +32,11 @@ const DEFAULT_CONFIGS: Record<RateCategory, RateLimitConfig> = {
     windowMs: 60_000,
     maxPerDevice: 20, // 20 short links per minute per device
     maxPerIp: 60,
+  },
+  admin_login: {
+    windowMs: 60_000,
+    maxPerDevice: 3, // 5 login attempts per minute per client
+    maxPerIp: 3, // 5 login attempts per minute per IP
   },
 };
 
@@ -83,11 +88,15 @@ class SlidingWindowLimiter {
         1,
         Math.ceil((oldest + config.windowMs - now) / 1000),
       );
+      const errMsg =
+        category === "admin_login"
+          ? `Too many admin login attempts from this network. Please wait ${retryAfterSeconds}s.`
+          : `Too many requests from your network. Please wait ${retryAfterSeconds}s.`;
       return {
         allowed: false,
         remaining: 0,
         retryAfterSeconds,
-        error: `Too many requests from your network. Please wait ${retryAfterSeconds}s.`,
+        error: errMsg,
       };
     }
 
@@ -105,11 +114,15 @@ class SlidingWindowLimiter {
         1,
         Math.ceil((oldest + config.windowMs - now) / 1000),
       );
+      const errMsg =
+        category === "admin_login"
+          ? `Too many admin login attempts. Please wait ${retryAfterSeconds}s.`
+          : `Too many ${category} submitted. Please wait ${retryAfterSeconds}s.`;
       return {
         allowed: false,
         remaining: 0,
         retryAfterSeconds,
-        error: `Too many ${category} submitted. Please wait ${retryAfterSeconds}s.`,
+        error: errMsg,
       };
     }
 
