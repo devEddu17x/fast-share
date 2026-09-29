@@ -73,3 +73,26 @@ export async function purgeExpiredMessages(db: D1Database): Promise<number> {
 
   return res.meta.changes || 0;
 }
+
+/**
+ * Deletes a single room message by ID.
+ */
+export async function deleteRoomMessage(
+  db: D1Database,
+  id: string,
+): Promise<boolean> {
+  const res = await db
+    .prepare("DELETE FROM room_messages WHERE id = ?")
+    .bind(id)
+    .run();
+
+  return (res.meta.changes || 0) > 0;
+}
+
+/**
+ * Purges all room messages immediately.
+ */
+export async function purgeAllMessages(db: D1Database): Promise<number> {
+  const res = await db.prepare("DELETE FROM room_messages").run();
+  return res.meta.changes || 0;
+}
